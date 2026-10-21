@@ -1,7 +1,8 @@
 """Ultrawide Menus Patcher - keeps your other UI mods working with Ultrawide Menus.
 
-Ultrawide Menus replaces three screen files: the inventory (also shop, loot container and stash), the blacksmith
-and the reforge. The main file's copies are built from the game's own files, so another mod that replaces the
+Ultrawide Menus replaces four screen files: the world map, the inventory (also shop, loot container and stash),
+the blacksmith and the reforge. A world map that already has the full-width map built in (Map Quest Insight 1.6.2
+or later) is left out, so that mod's map loads. The main file's copies are built from the game's own files, so another mod that replaces the
 same files (for example Gear Compare, Smooth UI Remastered or Recent Loot Tab) loses its changes to these screens.
 
 For each of the three screens this patcher takes the copy the game would load if Ultrawide Menus were not
@@ -40,7 +41,8 @@ import uw_bs_patch   # noqa: E402
 import uw_tm_patch   # noqa: E402
 import abcrt         # noqa: E402
 import avm2verify    # noqa: E402
-from uw_map_patch import PatchError  # noqa: E402  (shared helpers; this patcher never builds the world map)
+import uw_map_patch  # noqa: E402
+from uw_map_patch import PatchError  # noqa: E402
 
 VERSION = '1.0.0'
 UW_FOLDER = 'mod0000_UltrawideMenus'
@@ -67,7 +69,47 @@ class Page:
         self.short = mod.DEPOT.split('\\')[-1]
 
 
-PAGES = (Page('Inventory', 'inventory, shop, loot container, stash', uw_inv_patch, VANILLA_INV, 'uwInvVersion'),
+class MapMod:
+    """the world map page: uw_map_patch with the interface the other pages' modules have"""
+    DEPOT = uw_map_patch.DEPOT
+    VERSION = 1                  # uwApi
+
+    @staticmethod
+    def markers(redswf):
+        """{uwApi: 1} for a map with the ultrawide map code, plus qmiUwApi for Map Quest Insight's own copy of it"""
+        abc = abcrt.ABC(abcrt.swf_abcs(uw_inv_patch.swf_of(redswf))[0][1])
+        ci = next(i for i, ins in enumerate(abc.instances) if abc.mn(ins['name']) == 'MapMenu')
+        names = {abc.mn(t.name) for t in abc.instances[ci]['traits']}
+        return {n: 1 for n in ('uwApi', 'qmiUwApi') if n in names}
+
+    @staticmethod
+    def patch_redswf(orig, keep_input_table_crcs=False):
+        """uw_map_patch.patch_redswf, with the inventory's container check (keep_input_table_crcs: another author's
+        stored table CRC is kept as they wrote it, e.g. UI Remastered Edition)"""
+        if not keep_input_table_crcs:
+            return uw_map_patch.patch_redswf(orig)
+        M = uw_map_patch
+        try:
+            w = M.cr2w.CR2W(orig)
+            pe, lo, bo, bl, tail = w.swf_layout()
+            fws = M.inflate_swf(w.chunk_data(0)[bo:bo + bl])
+            abcs = abcrt.swf_abcs(fws)
+            if len(abcs) != 1:
+                raise PatchError('expected 1 code block, found %d' % len(abcs))
+            abc = M.patch_abc(abcrt.ABC(abcs[0][1]))
+            new_abc = abc.serialize()
+            abcrt.ABC(new_abc)
+            out, _ = M.cr2w.rewrap(orig, abcrt.replace_abc(fws, new_abc))
+        except PatchError:
+            raise
+        except (AssertionError, StopIteration, ValueError, KeyError, IndexError) as e:
+            raise PatchError('the part of the map screen it changes is different in this file (%r)' % e)
+        uw_inv_patch.container_check(orig, out, True)
+        return out
+
+
+PAGES = (Page('World map', 'world map', MapMod, VANILLA_GUI, 'uwApi'),
+         Page('Inventory', 'inventory, shop, loot container, stash', uw_inv_patch, VANILLA_INV, 'uwInvVersion'),
          Page('Blacksmith', 'blacksmith, armorer, runewright', uw_bs_patch, VANILLA_GUI, 'uwBsVersion'),
          Page('Reforge', 'reforge', uw_tm_patch, VANILLA_GUI, 'uwTmVersion'))
 
@@ -368,6 +410,7 @@ class Result:
         self.shippers = []        # Mods folders shipping this screen (load order; Ultrawide Menus excluded)
         self.modio = []
         self.marked = False       # the source already carries an ultrawide marker
+        self.expected = False     # left out on purpose: the loading copy already has it (Map Quest Insight's map)
 
     def why(self):
         return self.reason.rstrip('.') + '.'
@@ -453,7 +496,12 @@ def analyse(game, uw_name, order, settings, found, modio_found, vanilla, unreada
         mk = safe_markers(page, r.orig)
         if mk and page.marker in mk:
             r.marked = True
-            if page is PAGES[0] and 'gcUiVersion' in mk:
+            if page.mod is MapMod and 'qmiUwApi' in mk:
+                r.expected = True
+                r.reason = ('%s\'s world map already has the full-width map built in (Map Quest Insight 1.6.2 or later, '
+                            'menu page "Ultrawide map"), so it is left out here and that map loads as it is'
+                            % (r.folder or 'the game'))
+            elif page.mod is uw_inv_patch and 'gcUiVersion' in mk:
                 r.reason = 'this file already contains the ultrawide patch. ' + GC_REBUILD
             elif r.folder:
                 r.reason = ('this file already contains the ultrawide patch (an old copy of Ultrawide Menus, or a '
@@ -511,8 +559,11 @@ def show(results, vanilla, current):
             same = current.get(r.page.key) == r.data
             say('  Can be patched: yes%s' % ('   (the same as the file installed now)' if same else ''))
         else:
-            say('  Can be patched: NO - %s' % r.why())
-            say('  Left out: %s.' % r.fallback())
+            if r.expected:
+                say('  Not needed: %s' % r.why())
+            else:
+                say('  Can be patched: NO - %s' % r.why())
+                say('  Left out: %s.' % r.fallback())
         for n in r.notes:
             say('  Note: ' + n)
         for w in r.warnings:
@@ -665,7 +716,7 @@ def write_report(target, game, mods_dir, results, vanilla, removed, warnings, ba
                                                                    md5(r.data)))
         else:
             fb = r.fallback()
-            w('%s LEFT OUT: %s' % (r.page.label, r.why()))
+            w('%s %s: %s' % (r.page.label, 'not needed' if r.expected else 'LEFT OUT', r.why()))
             w('  %s%s.' % (fb[0].upper(), fb[1:]))
         w('  %s (%s)' % (r.name, r.page.screens))
         w('  Mods that replace it (load order): %s%s' % (
@@ -808,7 +859,7 @@ def run(args):
             results = analyse(game, uw_name, order, settings, found, modio_found, vanilla, unreadable)
             show(results, vanilla, current)
 
-    left_out = [r for r in results if r.data is None]
+    left_out = [r for r in results if r.data is None and not r.expected]
     keys = {p.key for p in PAGES}
     removed = sorted(current_names[k].split('\\')[-1] for k in current if k not in keys)
     built = [r for r in results if r.data is not None]

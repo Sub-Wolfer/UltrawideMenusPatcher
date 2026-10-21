@@ -1,10 +1,10 @@
 # Ultrawide Menus Patcher
 
 Source code of **Ultrawide Menus Patcher**, the optional tool for the Witcher 3 mod
-**Ultrawide Menus** (21:9 and 32:9 inventory, shops, stash, blacksmith and reforge; on Nexus Mods).
+**Ultrawide Menus** (21:9 and 32:9 world map, inventory, shops, stash, blacksmith and reforge; on Nexus Mods).
 
-Ultrawide Menus replaces three screen files: the inventory (also shop, loot container and stash),
-the blacksmith and the reforge. Its main file is built from the game's own screens, so another mod
+Ultrawide Menus replaces four screen files: the world map, the inventory (also shop, loot container
+and stash), the blacksmith and the reforge. Its main file is built from the game's own screens, so another mod
 that replaces the same files (Gear Compare, Smooth UI Remastered, Recent Loot Tab, HoodSlots, UI
 Remastered Edition, ...) loses its changes to them. For each screen the patcher takes the copy the
 game would load without Ultrawide Menus, adds the ultrawide changes to it and saves the result in
@@ -23,6 +23,8 @@ What it does, and does not do:
 - Stops while the game is running. No network access, no installer, no registry writes. It only
   *reads* the Steam/GOG registry keys to find the game folder.
 - Python standard library only; no third-party packages.
+- A world map that already has the full-width map built in (Map Quest Insight 1.6.2 or later) is
+  left out, so that mod's map loads.
 - With Gear Compare Patcher: run Gear Compare Patcher first (1.1.2 or later skips Ultrawide Menus by
   itself), then this patcher.
 
@@ -34,7 +36,7 @@ What it does, and does not do:
 | `src/uw_inv_patch.py` | Ultrawide changes to the inventory screen (Flash bytecode) |
 | `src/uw_bs_patch.py` | Ultrawide changes to the blacksmith screen |
 | `src/uw_tm_patch.py` | Ultrawide changes to the reforge screen |
-| `src/uw_map_patch.py` | Shared helpers (this patcher never builds the world map) |
+| `src/uw_map_patch.py` | Ultrawide changes to the world map screen |
 | `src/avm2verify.py` | Bytecode check run on every patched file |
 | `src/abcrt.py` | ActionScript 3 (ABC) bytecode reader/writer |
 | `src/cr2w.py` | CR2W wrapper of `.redswf` files |
@@ -66,7 +68,7 @@ reproducible, so a rebuilt exe will have a different hash.
 
 Released exes (on Nexus Mods and GitHub Releases), SHA-256:
 
-- 1.0.0: `1a91b93e3226359774aa4cb23411935ebb0704586544507213a8a425aa140766`
+- 1.0.0: `dbc3ea7962df66fdf5e2a5d7931331455a8cb4109d1f829bbd50a007aeeda0d8`
 
 ## License
 
